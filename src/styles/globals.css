@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@300;400;500;600;700&family=Rozha+One&family=Tiro+Devanagari+Hindi:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-serif: 'Rozha One', 'Tiro Devanagari Hindi', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
+  --bg-cream: #FAF6F0;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-family: var(--font-sans);
+  background-color: var(--bg-cream);
+  color: #1c1917;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-cream);
+  color: #1c1917;
+  overflow-x: hidden;
+}
+
+::selection {
+  background-color: #ffedd5;
+  color: #9a3412;
+}
+
+/* Subtle Indian flag tricolor rule */
+.tricolor-stripe {
+  background: linear-gradient(90deg, #ea580c 0%, #ea580c 33.3%, #ffffff 33.3%, #ffffff 66.6%, #16a34a 66.6%, #16a34a 100%);
+  height: 2.5px;
+  width: 100%;
+}
+
+/* Editorial typography utilities */
+.font-editorial-heading {
+  font-family: var(--font-serif);
+  letter-spacing: -0.015em;
+}
+
+/* Hero image soft fade masks for non-card seamless background integration */
+.hero-mask-desktop {
+  mask-image: linear-gradient(to right, transparent 0%, rgba(0,0,0,0.15) 12%, rgba(0,0,0,0.7) 35%, black 65%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0,0,0,0.15) 12%, rgba(0,0,0,0.7) 35%, black 65%);
+}
+
+.hero-mask-bottom {
+  mask-image: linear-gradient(to bottom, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, rgba(0,0,0,0.4) 85%, transparent 100%);
+}
+
+.hero-mask-mobile {
+  mask-image: linear-gradient(to bottom, black 65%, rgba(0,0,0,0.6) 80%, rgba(0,0,0,0.1) 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 65%, rgba(0,0,0,0.6) 80%, rgba(0,0,0,0.1) 95%, transparent 100%);
+}
+
+/* Subtle editorial divider lines */
+.editorial-rule {
+  border-top: 1px solid rgba(28, 25, 23, 0.08);
+}
