@@ -8,52 +8,80 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
-    const isAdmin = verifyAdminAuth(req);
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'अनधिकृत पहुंच' }, { status: 401 });
+    const auth = verifyAdminAuth(req);
+    if (!auth.authenticated) {
+      return NextResponse.json({ error: 'अनधिकृत पहुंच (Unauthorized)' }, { status: 401 });
     }
 
     const db = await connectToDatabase();
 
     if (db) {
-      const [total, newIssues, inReview, forwarded, resolved, feedbackCount] = await Promise.all([
-        Issue.countDocuments(),
-        Issue.countDocuments({ status: 'नई समस्या' }),
-        Issue.countDocuments({ status: 'जांच में' }),
-        Issue.countDocuments({ status: 'संबंधित विभाग को सूचित' }),
-        Issue.countDocuments({ status: 'समाधान हुआ' }),
-        Feedback.countDocuments(),
-      ]);
+      const [total, pending, inProgress, resolved, recentSubmissions, feedbackCount] =
+        await Promise.all([
+          Issue.countDocuments(),
+          Issue.countDocuments({ status: { $in: ['Pending', 'नई समस्या'] } }),
+          Issue.countDocuments({
+            status: { $in: ['In Progress', 'जांच में', 'संबंधित विभाग को सूचित'] },
+          }),
+          Issue.countDocuments({ status: { $in: ['Resolved', 'समाधान हुआ'] } }),
+          Issue.find()
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('referenceId citizenName name category location status createdAt')
+            .lean(),
+          Feedback.countDocuments(),
+        ]);
 
       return NextResponse.json({
         success: true,
         stats: {
           total,
-          newIssues,
-          inReview,
-          forwarded,
+          pending,
+          inProgress,
           resolved,
           feedbackCount,
         },
+        recentSubmissions,
       });
     } else {
-      const issues = memoryStore.getIssues();
-      const feedback = memoryStore.getFeedback();
+      // Memory store fallback
+      const list = memoryStore.getIssues();
+      const fbList = memoryStore.getFeedback();
+
+      const total = list.length;
+      const pending = list.filter((i) => ['Pending', 'नई समस्या'].includes(i.status)).length;
+      const inProgress = list.filter((i) =>
+        ['In Progress', 'जांच में', 'संबंधित विभाग को सूचित'].includes(i.status)
+      ).length;
+      const resolved = list.filter((i) => ['Resolved', 'समाधान हुआ'].includes(i.status)).length;
+
+      const recentSubmissions = list.slice(0, 5).map((i) => ({
+        referenceId: i.referenceId,
+        citizenName: i.citizenName || i.name || 'नागरिक',
+        name: i.citizenName || i.name || 'नागरिक',
+        category: i.category,
+        location: i.location,
+        status: i.status,
+        createdAt: i.createdAt,
+      }));
 
       return NextResponse.json({
         success: true,
         stats: {
-          total: issues.length,
-          newIssues: issues.filter((i) => i.status === 'नई समस्या').length,
-          inReview: issues.filter((i) => i.status === 'जांच में').length,
-          forwarded: issues.filter((i) => i.status === 'संबंधित विभाग को सूचित').length,
-          resolved: issues.filter((i) => i.status === 'समाधान हुआ').length,
-          feedbackCount: feedback.length,
+          total,
+          pending,
+          inProgress,
+          resolved,
+          feedbackCount: fbList.length,
         },
+        recentSubmissions,
       });
     }
   } catch (error) {
-    console.error('Stats error:', error);
-    return NextResponse.json({ error: 'आंकड़े लोड करने में त्रुटि' }, { status: 500 });
+    console.error('Admin stats error:', error);
+    return NextResponse.json(
+      { error: 'डैशबोर्ड डेटा प्राप्त करने में असमर्थ।' },
+      { status: 500 }
+    );
   }
 }

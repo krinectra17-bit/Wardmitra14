@@ -6,14 +6,67 @@ import { verifyAdminAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Simple in-memory rate limiting: max 10 submissions per minute per IP
+const rateLimitMap = new Map<string, { count: number; expiresAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.expiresAt) {
+    rateLimitMap.set(ip, { count: 1, expiresAt: now + 60000 });
+    return true;
+  }
+
+  if (entry.count >= 10) {
+    return false;
+  }
+
+  entry.count += 1;
+  return true;
+}
+
+// Sanitize string to remove potential script tags or malicious html
+function sanitizeInput(str: unknown): string {
+  if (typeof str !== 'string') return '';
+  return str
+    .trim()
+    .replace(/[<>]/g, '')
+    .slice(0, 2000); // Enforce max length
+}
+
+/**
+ * POST /api/issues - Submit a new citizen issue
+ */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { name, mobile, category, description, location, imageUrl } = body;
+    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'anonymous';
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json(
+        { error: 'बहुत सारे अनुरोध प्राप्त हुए हैं। कृपया कुछ देर बाद पुनः प्रयास करें।' },
+        { status: 429 }
+      );
+    }
 
-    if (!category || !description || !location) {
+    const body = await req.json();
+    const category = sanitizeInput(body.category);
+    const location = sanitizeInput(body.location);
+    const description = sanitizeInput(body.description);
+    const citizenName = sanitizeInput(body.citizenName || body.name);
+    const mobile = sanitizeInput(body.mobile);
+    const photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl.trim() : (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '');
+
+    // Server-side validation
+    if (!category || !location || !description) {
       return NextResponse.json(
         { error: 'श्रेणी, विवरण एवं स्थान अनिवार्य हैं।' },
+        { status: 400 }
+      );
+    }
+
+    if (description.length < 10) {
+      return NextResponse.json(
+        { error: 'समस्या का विवरण कम से कम 10 अक्षरों का होना चाहिए।' },
         { status: 400 }
       );
     }
@@ -24,56 +77,53 @@ export async function POST(req: NextRequest) {
     if (db) {
       const newIssue = await Issue.create({
         referenceId,
-        name: name ? String(name).trim() : 'गुमनाम नागरिक',
-        mobile: mobile ? String(mobile).trim() : '',
-        category: String(category).trim(),
-        description: String(description).trim(),
-        location: String(location).trim(),
-        imageUrl: imageUrl || '',
-        status: 'नई समस्या',
+        citizenName: citizenName || 'नागरिक',
+        name: citizenName || 'नागरिक',
+        mobile: mobile || '',
+        category,
+        location,
+        description,
+        photoUrl: photoUrl || '',
+        imageUrl: photoUrl || '',
+        status: 'Pending',
       });
 
       return NextResponse.json({
         success: true,
         referenceId: newIssue.referenceId,
+        status: 'Pending',
         message: 'आपकी समस्या सफलतापूर्वक दर्ज कर ली गई है।',
-        issue: {
-          referenceId: newIssue.referenceId,
-          category: newIssue.category,
-          status: newIssue.status,
-          createdAt: newIssue.createdAt,
-        },
       });
     } else {
-      // Memory store fallback
-      const newIssue = memoryStore.addIssue({
-        _id: 'local-' + Date.now(),
+      // Fallback in-memory store
+      const fallbackIssue = {
+        _id: 'mem_' + Date.now(),
         referenceId,
-        name: name ? String(name).trim() : 'गुमनाम नागरिक',
-        mobile: mobile ? String(mobile).trim() : '',
-        category: String(category).trim(),
-        description: String(description).trim(),
-        location: String(location).trim(),
-        imageUrl: imageUrl || '',
-        status: 'नई समस्या',
+        citizenName: citizenName || 'नागरिक',
+        name: citizenName || 'नागरिक',
+        mobile: mobile || '',
+        category,
+        location,
+        description,
+        photoUrl: photoUrl || '',
+        imageUrl: photoUrl || '',
+        status: 'Pending' as const,
+        internalNotes: '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+
+      memoryStore.addIssue(fallbackIssue);
 
       return NextResponse.json({
         success: true,
-        referenceId: newIssue.referenceId,
+        referenceId: fallbackIssue.referenceId,
+        status: 'Pending',
         message: 'आपकी समस्या सफलतापूर्वक दर्ज कर ली गई है।',
-        issue: {
-          referenceId: newIssue.referenceId,
-          category: newIssue.category,
-          status: newIssue.status,
-          createdAt: newIssue.createdAt,
-        },
       });
     }
   } catch (error) {
-    console.error('Issue creation error:', error);
+    console.error('Error submitting issue:', error);
     return NextResponse.json(
       { error: 'समस्या दर्ज करने में त्रुटि हुई। कृपया पुनः प्रयास करें।' },
       { status: 500 }
@@ -81,56 +131,85 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/**
+ * GET /api/issues - Admin query for issues with search and filter
+ */
 export async function GET(req: NextRequest) {
   try {
-    const isAdmin = verifyAdminAuth(req);
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'अनधिकृत पहुंच' }, { status: 401 });
+    const auth = verifyAdminAuth(req);
+    if (!auth.authenticated) {
+      return NextResponse.json({ error: 'अनधिकृत पहुंच (Unauthorized)' }, { status: 401 });
     }
 
-    const url = new URL(req.url);
-    const category = url.searchParams.get('category');
-    const status = url.searchParams.get('status');
-    const search = url.searchParams.get('search');
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get('search') || '';
+    const category = searchParams.get('category') || '';
+    const status = searchParams.get('status') || '';
 
     const db = await connectToDatabase();
 
     if (db) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const query: any = {};
-      if (category && category !== 'सभी') query.category = category;
-      if (status && status !== 'सभी') query.status = status;
+      const query: Record<string, unknown> = {};
+
+      if (category && category !== 'all') {
+        query.category = category;
+      }
+
+      if (status && status !== 'all') {
+        query.status = status;
+      }
+
       if (search) {
+        const regex = new RegExp(search, 'i');
         query.$or = [
-          { referenceId: { $regex: search, $options: 'i' } },
-          { location: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
+          { referenceId: regex },
+          { citizenName: regex },
+          { name: regex },
+          { location: regex },
+          { description: regex },
         ];
       }
 
-      const issues = await Issue.find(query).sort({ createdAt: -1 });
-      return NextResponse.json({ success: true, issues });
+      const issues = await Issue.find(query).sort({ createdAt: -1 }).limit(100).lean();
+
+      return NextResponse.json({
+        success: true,
+        issues,
+      });
     } else {
-      let issues = memoryStore.getIssues();
-      if (category && category !== 'सभी') {
-        issues = issues.filter((i) => i.category === category);
+      // Memory store fallback
+      let list = memoryStore.getIssues();
+
+      if (category && category !== 'all') {
+        list = list.filter((i) => i.category === category);
       }
-      if (status && status !== 'सभी') {
-        issues = issues.filter((i) => i.status === status);
+
+      if (status && status !== 'all') {
+        list = list.filter((i) => i.status === status);
       }
+
       if (search) {
         const s = search.toLowerCase();
-        issues = issues.filter(
+        list = list.filter(
           (i) =>
             i.referenceId.toLowerCase().includes(s) ||
+            (i.citizenName && i.citizenName.toLowerCase().includes(s)) ||
+            (i.name && i.name.toLowerCase().includes(s)) ||
             i.location.toLowerCase().includes(s) ||
             i.description.toLowerCase().includes(s)
         );
       }
-      return NextResponse.json({ success: true, issues });
+
+      return NextResponse.json({
+        success: true,
+        issues: list,
+      });
     }
   } catch (error) {
-    console.error('Get issues error:', error);
-    return NextResponse.json({ error: 'डेटा लोड करने में त्रुटि' }, { status: 500 });
+    console.error('Error fetching admin issues:', error);
+    return NextResponse.json(
+      { error: 'समस्याएं प्राप्त करने में त्रुटि हुई।' },
+      { status: 500 }
+    );
   }
 }

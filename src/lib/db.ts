@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_DB = process.env.MONGODB_DB;
 
 interface CachedConnection {
   conn: typeof mongoose | null;
@@ -20,7 +21,7 @@ if (!cached) {
 
 export async function connectToDatabase() {
   if (!MONGODB_URI) {
-    // Return null without throwing so the app can use fallback storage in dev if needed
+    // Return null without throwing so the app can use fallback storage in dev/preview if needed
     return null;
   }
 
@@ -29,11 +30,15 @@ export async function connectToDatabase() {
   }
 
   if (!cached!.promise) {
-    const opts = {
+    const opts: mongoose.ConnectOptions = {
       bufferCommands: false,
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 8000,
     };
+
+    if (MONGODB_DB) {
+      opts.dbName = MONGODB_DB;
+    }
 
     cached!.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
       return mongooseInstance;
@@ -53,18 +58,20 @@ export async function connectToDatabase() {
 
 /**
  * In-memory / file fallback store for local testing when MONGODB_URI is not set.
- * This guarantees the developer and reviewers can submit and view issues immediately.
+ * Guarantees the app works out-of-the-box in local preview.
  */
 export interface FallbackIssue {
   _id: string;
   referenceId: string;
+  citizenName?: string;
   name?: string;
   mobile?: string;
   category: string;
   description: string;
   location: string;
+  photoUrl?: string;
   imageUrl?: string;
-  status: 'नई समस्या' | 'जांच में' | 'संबंधित विभाग को सूचित' | 'समाधान हुआ';
+  status: 'Pending' | 'In Progress' | 'Resolved' | 'नई समस्या' | 'जांच में' | 'संबंधित विभाग को सूचित' | 'समाधान हुआ';
   internalNotes?: string;
   createdAt: string;
   updatedAt: string;
@@ -91,12 +98,13 @@ if (!global.memoryIssues) {
     {
       _id: 'sample-1',
       referenceId: 'WARD14-729104',
+      citizenName: 'रमेश कुमार',
       name: 'रमेश कुमार',
       mobile: '9876543210',
       category: 'स्ट्रीट लाइट',
       description: 'गली नंबर 3 के मोड़ पर स्ट्रीट लाइट विगत 4 दिनों से बंद है, जिससे रात में आवागमन में परेशानी हो रही है।',
       location: 'गली नं. 3, दाधीच वाटिका के पास',
-      status: 'जांच में',
+      status: 'In Progress',
       internalNotes: 'वार्ड बिजली विंग को निरीक्षण हेतु प्रेषित किया गया।',
       createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
       updatedAt: new Date(Date.now() - 86400000).toISOString(),
@@ -104,12 +112,13 @@ if (!global.memoryIssues) {
     {
       _id: 'sample-2',
       referenceId: 'WARD14-381920',
+      citizenName: 'सुनीता शर्मा',
       name: 'सुनीता शर्मा',
       mobile: '9823456789',
-      category: 'स्वच्छता',
+      category: 'सफाई',
       description: 'मुख्य मार्ग के पास नियमित कचरा उठान नहीं हो पा रहा है। कृपया वाहन फेरे सुनिश्चित करें।',
       location: 'मेन मार्केट रोड, वार्ड 14',
-      status: 'संबंधित विभाग को सूचित',
+      status: 'Pending',
       internalNotes: 'सफाई निरीक्षक से बात की गई है, कल सुबह विशेष अभियान।',
       createdAt: new Date(Date.now() - 86400000 * 4).toISOString(),
       updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),

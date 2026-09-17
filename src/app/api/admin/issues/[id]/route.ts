@@ -7,73 +7,13 @@ export const dynamic = 'force-dynamic';
 
 interface Params {
   params: {
-    referenceId: string;
+    id: string;
   };
 }
 
 /**
- * GET /api/issues/[referenceId]
- * Public issue tracking endpoint.
- * Returns ONLY non-sensitive civic progress fields.
- */
-export async function GET(req: NextRequest, { params }: Params) {
-  try {
-    const { referenceId } = params;
-    if (!referenceId) {
-      return NextResponse.json({ error: 'समस्या संदर्भ ID आवश्यक है।' }, { status: 400 });
-    }
-
-    const cleanRef = referenceId.trim().toUpperCase();
-    const db = await connectToDatabase();
-
-    if (db) {
-      const issue = await Issue.findOne({ referenceId: cleanRef });
-      if (!issue) {
-        return NextResponse.json({ error: 'यह समस्या ID नहीं मिली। कृपया पुनः जांचें।' }, { status: 404 });
-      }
-
-      // Return strictly public, non-sensitive data
-      return NextResponse.json({
-        success: true,
-        issue: {
-          referenceId: issue.referenceId,
-          category: issue.category,
-          status: issue.status,
-          submissionDate: issue.createdAt,
-          lastUpdatedDate: issue.updatedAt,
-          createdAt: issue.createdAt,
-          updatedAt: issue.updatedAt,
-        },
-      });
-    } else {
-      // Memory store fallback
-      const issue = memoryStore.findIssueByRef(cleanRef);
-      if (!issue) {
-        return NextResponse.json({ error: 'यह समस्या ID नहीं मिली। कृपया पुनः जांचें।' }, { status: 404 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        issue: {
-          referenceId: issue.referenceId,
-          category: issue.category,
-          status: issue.status,
-          submissionDate: issue.createdAt,
-          lastUpdatedDate: issue.updatedAt,
-          createdAt: issue.createdAt,
-          updatedAt: issue.updatedAt,
-        },
-      });
-    }
-  } catch (error) {
-    console.error('Track issue error:', error);
-    return NextResponse.json({ error: 'ट्रैकिंग जानकारी प्राप्त करने में असमर्थ।' }, { status: 500 });
-  }
-}
-
-/**
- * PATCH /api/issues/[referenceId]
- * Admin endpoint to update issue status and internal notes.
+ * PATCH /api/admin/issues/[id]
+ * Updates status (Pending, In Progress, Resolved) and internalNotes
  */
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
@@ -82,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'अनधिकृत पहुंच (Unauthorized)' }, { status: 401 });
     }
 
-    const { referenceId } = params;
+    const { id } = params;
     const body = await req.json();
     const { status, internalNotes } = body;
 
@@ -100,7 +40,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'अमान्य स्थिति (Invalid Status)' }, { status: 400 });
     }
 
-    const cleanRef = referenceId.trim().toUpperCase();
     const db = await connectToDatabase();
 
     if (db) {
@@ -109,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (internalNotes !== undefined) updateData.internalNotes = String(internalNotes).trim();
 
       const updated = await Issue.findOneAndUpdate(
-        { $or: [{ referenceId: cleanRef }, { _id: referenceId }] },
+        { $or: [{ referenceId: id.toUpperCase() }, { _id: id }] },
         { $set: updateData },
         { new: true }
       );
@@ -124,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         issue: updated,
       });
     } else {
-      const updated = memoryStore.updateIssue(cleanRef, {
+      const updated = memoryStore.updateIssue(id, {
         ...(status && { status }),
         ...(internalNotes !== undefined && { internalNotes }),
       });
@@ -146,8 +85,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 /**
- * DELETE /api/issues/[referenceId]
- * Admin endpoint to delete an issue (e.g. spam).
+ * DELETE /api/admin/issues/[id]
  */
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
@@ -156,13 +94,12 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'अनधिकृत पहुंच (Unauthorized)' }, { status: 401 });
     }
 
-    const { referenceId } = params;
-    const cleanRef = referenceId.trim().toUpperCase();
+    const { id } = params;
     const db = await connectToDatabase();
 
     if (db) {
       const deleted = await Issue.findOneAndDelete({
-        $or: [{ referenceId: cleanRef }, { _id: referenceId }],
+        $or: [{ referenceId: id.toUpperCase() }, { _id: id }],
       });
 
       if (!deleted) {
@@ -171,7 +108,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
       return NextResponse.json({ success: true, message: 'समस्या सफलतापूर्वक हटा दी गई।' });
     } else {
-      memoryStore.deleteIssue(cleanRef);
+      memoryStore.deleteIssue(id);
       return NextResponse.json({ success: true, message: 'समस्या सफलतापूर्वक हटा दी गई।' });
     }
   } catch (error) {

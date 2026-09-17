@@ -8,7 +8,7 @@ import { Search, ArrowLeft, Clock, Calendar, CheckCircle2, AlertCircle, Loader2,
 interface TrackedIssue {
   referenceId: string;
   category: string;
-  status: 'नई समस्या' | 'जांच में' | 'संबंधित विभाग को सूचित' | 'समाधान हुआ';
+  status: 'Pending' | 'In Progress' | 'Resolved' | 'नई समस्या' | 'जांच में' | 'संबंधित विभाग को सूचित' | 'समाधान हुआ' | string;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,38 +56,31 @@ function TrackContent() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'नई समस्या':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            नई समस्या (पंजीकृत)
-          </span>
-        );
-      case 'जांच में':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            जांच में (कार्यालय द्वारा समीक्षा जारी)
-          </span>
-        );
-      case 'संबंधित विभाग को सूचित':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-300">
-            <span className="w-2 h-2 rounded-full bg-purple-500" />
-            संबंधित विभाग को अग्रेषित
-          </span>
-        );
-      case 'समाधान हुआ':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-civicgreen-100 text-civicgreen-900 border border-civicgreen-300">
-            <CheckCircle2 className="w-3.5 h-3.5 text-civicgreen-700" />
-            समाधान हुआ (कार्य संपन्न)
-          </span>
-        );
-      default:
-        return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{status}</span>;
+    if (status === 'Pending' || status === 'नई समस्या') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          Pending (लंबित / पंजीकृत)
+        </span>
+      );
     }
+    if (status === 'In Progress' || status === 'जांच में' || status === 'संबंधित विभाग को सूचित') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
+          <span className="w-2 h-2 rounded-full bg-blue-500" />
+          In Progress (प्रक्रियाधीन)
+        </span>
+      );
+    }
+    if (status === 'Resolved' || status === 'समाधान हुआ') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-civicgreen-100 text-civicgreen-900 border border-civicgreen-300">
+          <CheckCircle2 className="w-3.5 h-3.5 text-civicgreen-700" />
+          Resolved (समाधान संपन्न)
+        </span>
+      );
+    }
+    return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{status}</span>;
   };
 
   return (
@@ -221,17 +214,17 @@ function TrackContent() {
                   समाधान प्रक्रिया के चरण:
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
-                  <div className={`p-2.5 rounded border ${issue.status === 'नई समस्या' ? 'bg-amber-50 border-amber-300 font-bold text-amber-900' : 'bg-gray-50 text-gray-500'}`}>
-                    1. नई समस्या दर्ज
+                  <div className={`p-2.5 rounded border ${issue.status === 'Pending' || issue.status === 'नई समस्या' ? 'bg-amber-50 border-amber-300 font-bold text-amber-900' : 'bg-gray-50 text-gray-500'}`}>
+                    1. Pending (पंजीकृत)
                   </div>
                   <div className={`p-2.5 rounded border ${issue.status === 'जांच में' ? 'bg-blue-50 border-blue-300 font-bold text-blue-900' : 'bg-gray-50 text-gray-500'}`}>
                     2. कार्यालय जांच
                   </div>
-                  <div className={`p-2.5 rounded border ${issue.status === 'संबंधित विभाग को सूचित' ? 'bg-purple-50 border-purple-300 font-bold text-purple-900' : 'bg-gray-50 text-gray-500'}`}>
-                    3. विभाग को प्रेषित
+                  <div className={`p-2.5 rounded border ${issue.status === 'In Progress' || issue.status === 'संबंधित विभाग को सूचित' ? 'bg-purple-50 border-purple-300 font-bold text-purple-900' : 'bg-gray-50 text-gray-500'}`}>
+                    3. In Progress (प्रक्रियाधीन)
                   </div>
-                  <div className={`p-2.5 rounded border ${issue.status === 'समाधान हुआ' ? 'bg-civicgreen-50 border-civicgreen-300 font-bold text-civicgreen-900' : 'bg-gray-50 text-gray-500'}`}>
-                    4. समाधान संपन्न
+                  <div className={`p-2.5 rounded border ${issue.status === 'Resolved' || issue.status === 'समाधान हुआ' ? 'bg-civicgreen-50 border-civicgreen-300 font-bold text-civicgreen-900' : 'bg-gray-50 text-gray-500'}`}>
+                    4. Resolved (समाधान संपन्न)
                   </div>
                 </div>
               </div>

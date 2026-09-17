@@ -23,6 +23,7 @@ const FeedbackSchema = new Schema<IFeedback>(
     mobile: {
       type: String,
       trim: true,
+      default: '',
     },
     response: {
       type: String,
@@ -43,6 +44,8 @@ const FeedbackSchema = new Schema<IFeedback>(
     timestamps: { createdAt: true, updatedAt: false },
   }
 );
+
+FeedbackSchema.index({ createdAt: -1 });
 
 export const Feedback: Model<IFeedback> =
   mongoose.models.Feedback || mongoose.model<IFeedback>('Feedback', FeedbackSchema);

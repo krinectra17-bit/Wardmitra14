@@ -113,11 +113,13 @@ export default function IssueForm({ initialCategory = '', isStandalonePage = fal
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          citizenName: name.trim() || undefined,
           name: name.trim() || undefined,
           mobile: mobile.trim() || undefined,
           category,
           location: location.trim(),
           description: description.trim(),
+          photoUrl: imageUrl,
           imageUrl,
         }),
       });
